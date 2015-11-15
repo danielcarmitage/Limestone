@@ -8,12 +8,9 @@ library(devtools)
 library(downloader)
 library(readxl)
 library(Quandl) #https://www.quandl.com/tools/r
-require(rCharts)
 library(grid)
 
 source("helpers.R")
-
-if(!exists("builder_list")) {quandl_get_list()}
 
 ###API key for Quandl
 quandl_key <<- "GFHcsSjXc_LFxoW_xobL"
@@ -31,7 +28,7 @@ shinyServer(
     ###Selectize input for tickers
     output$builder_symbol_select <- renderUI({
       withProgress(value = 0, message = "Loading...", {
-        builder_list <<- equity_list
+        builder_list <- quandl_equity_list()
         selectInput("builder_symbol_select", "Select Stock:", choices = setNames(paste(builder_list$quandl.code, sep = ""), paste(builder_list$name, " (", builder_list$ticker, ")", sep = "")), selected = "WIKI/TSLA", width = "100%")
       })
     })  
@@ -41,6 +38,8 @@ shinyServer(
       if(input$builder_get_symbols > 0){
         withProgress(value = 1, message = "Pulling Data...", {
             
+          builder_list <- quandl_equity_list()
+          
           if(exists("builder_data") & exists("builder_symbols")){
             qname <- builder_list[quandl.code == isolate(input$builder_symbol_select), name]
             validate(need(!(qname %in% builder_data$name), "This data has already been pulled"))
@@ -336,7 +335,7 @@ shinyServer(
     output$raw_futures_download_results <- renderDataTable({
       input$raw_download_button      
       
-      shiny::validate(need(input$raw_futures_download_button == T, "\n Search all databases for a keyword. For example, search 'crude oil' and a list of all datasets containing information on crude oil will be returned.  \n \n Instructions: \n --------------- \n 1. Enter key words to search \n 2. Press 'Search' \n 3. Copy ID number \n 4. Paste ID on the 'Data' tab \n 5. Press 'Get Data' \n 6. Export data to CSV \n 7. Enjoy!"))
+      shiny::validate(need(input$raw_futures_download_button == T, "\n Find any futures contract traded in the CBT, CEC, CME, EUREX, ICE, NYM, and NYMEX. \n \n Instructions: \n --------------- \n 1. Select the futures contract \n 2. Select the month  \n 3. Enter the year \n 4. Toggle the 'Get Data' button to display data \n 5. Export data to CSV \n 6. Enjoy!"))
       
       table_data <- quandl_raw_futures_download()
       
@@ -362,6 +361,7 @@ shinyServer(
     ###Renders the selectize input for the equities list
     output$equity_symbol_select <- renderUI({
       withProgress(value = 0, message = "Loading...", {
+        equity_list <- quandl_equity_list()
         selectInput("equity_symbol_select", "Select Stock:", choices = setNames(paste(equity_list$quandl.code, sep = ""), paste(equity_list$name, " (", equity_list$ticker, ")", sep = "")), selected = "WIKI/TSLA", width = "100%")
       })
     })
@@ -370,6 +370,8 @@ shinyServer(
     observe({
       if(input$equity_get_symbols > 0){
         withProgress(value = 1, message = "Pulling Data...", {
+          
+          equity_list <- quandl_equity_list()
           
           if(exists("equity_data") & exists("equity_symbols")){
             qname <- equity_list[quandl.code == isolate(input$equity_symbol_select), name]
@@ -495,6 +497,7 @@ shinyServer(
     ###Renders the selectize input for the futures list
     output$futures_symbol_select <- renderUI({
       withProgress(value = 0, message = "Loading...", {
+        futures_list <- quandl_futures_list()
         selectInput("futures_symbol_select", "Select Futures Contract:", choices = setNames(paste(futures_list$Quandl.Code, "1", sep = ""), paste(futures_list$Name, " (", futures_list$Ticker, ")", sep = "")), selected = "CHRIS/CME_CL1", width = "100%")
       })
     })
@@ -503,6 +506,8 @@ shinyServer(
     observe({
       if(input$futures_get_symbols > 0){
         withProgress(value = 1, message = "Pulling Data...", {
+          
+          futures_list <- quandl_futures_list()
           
           qcode <- isolate(as.character(input$futures_symbol_select))
           qcode <- substring(qcode, 1, nchar(qcode) - 1)
@@ -628,24 +633,12 @@ shinyServer(
     ################ END FUTURES ######################
 
     ##################### FX ##########################
-    ###Renders the selectize input for the FX list
-    output$fx_symbol_select <- renderUI({
-      withProgress(value = 0, message = "Loading...", {
-        selectInput("fx_symbol_select", "Select Currency:", choices = setNames(paste(fx_list$quandl.code, sep = ""), paste(fx_list$name, sep = "")), selected = "CURRFX/USDCAD", width = "100%")
-      })
-    })
-    
     ###Get Data button
     observe({
       if(input$fx_get_symbols > 0){
         withProgress(value = 1, message = "Pulling Data...", {
-          
-          if(exists("fx_data") & exists("fx_symbols")){
-            qname <- fx_list[quandl.code == isolate(input$fx_symbol_select), name]
-            validate(need(!(qname %in% fx_data$name), "This data has already been pulled"))
-          }
-          
-          quandl_data <- quandl_fx_download(isolate(input$fx_symbol_select),fx_list[quandl.code == isolate(as.character(input$fx_symbol_select)), name])
+          quandl_data <- quandl_fx_download(isolate(input$fx_symbol_select))
+          validate(need(!is.null(quandl_data), message = "Please enter a valid currency pair. e.g. 'USDCAD'"))
           fx_data_globalize(quandl_data)
         })
       }  
@@ -666,10 +659,8 @@ shinyServer(
     ###Clear All button
     observe({
       if(input$fx_clear_all > 0){
-        if(exists("builder_data")){
-          rm(fx_data, envir = .GlobalEnv)
-          rm(fx_symbols, envir = .GlobalEnv)
-        }
+        rm(fx_data, envir = .GlobalEnv)
+        rm(fx_symbols, envir = .GlobalEnv)
       }
     })
     
@@ -696,7 +687,7 @@ shinyServer(
       input$fx_clear_selected
       
       shiny::validate(
-        need(exists("fx_data"), message = "\n Pull currency exchange rates.  \n \n Instructions: \n --------------- \n 1. Select currency pair \n 2. Select date range \n 3. Press 'Get Data' \n 4. Export data to CSV \n 5. Enjoy!"))
+        need(exists("fx_data"), message = "\n Pull currency exchange rates.  \n \n Instructions: \n --------------- \n 1. Enter currency pair (e.g. USDCAD) \n 2. Select date range \n 3. Press 'Get Data' \n 4. Export data to CSV \n 5. Enjoy!"))
       
       graph_data <- fx_data
       
